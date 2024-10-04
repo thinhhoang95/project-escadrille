@@ -7,12 +7,12 @@ def get_sbm_graph():
     random.seed(42)
 
     # Define the number of communities and their sizes
-    num_communities = 3
-    community_sizes = [5, 5, 5]  # Four communities with different sizes
+    num_communities = 4
+    community_sizes = [10, 8, 6, 10]  # Four communities with different sizes
 
     # Define the probability of edges within and between communities
     p_intra = 1  # Probability of edges within the same community
-    p_inter = 0.08  # Probability of edges between different communities
+    p_inter = 0.03  # Probability of edges between different communities
 
     # Create the Stochastic Block Model
     probs = [[p_intra if i == j else p_inter for j in range(num_communities)] for i in range(num_communities)]
@@ -38,3 +38,26 @@ def get_graph():
     G = get_sbm_graph()
     g = convert_networkx_to_custom_graph(G)
     return g
+
+from graph_cot import convert_custom_graph_to_networkx
+
+if __name__ == "__main__":
+    g = get_graph()
+    # Visualize graph g with networkx 
+    g_nx = convert_custom_graph_to_networkx(g)
+    # Visualize the graph
+    pos = nx.spring_layout(g_nx)
+    plt.figure(figsize=(12, 8))
+    
+    # Assign colors to communities
+    communities = nx.algorithms.community.label_propagation_communities(g_nx)
+    color_map = plt.cm.get_cmap('viridis')
+    colors = [color_map(i / len(communities)) for i, com in enumerate(communities) for _ in com]
+    
+    nx.draw(g_nx, pos, with_labels=True, node_color=colors, 
+            node_size=500, font_size=10, font_weight='bold')
+    
+    plt.title("Stochastic Block Model Graph")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()

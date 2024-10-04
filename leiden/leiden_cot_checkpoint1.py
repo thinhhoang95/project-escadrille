@@ -363,23 +363,26 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
 if __name__ == "__main__":
     # Create a sample graph
     
-    # g = Graph()
-    # edges = [
-    #     (1, 2), (1, 3), (2, 3),
-    #     (4, 5), (5, 6), (4, 6),
-    #     (3, 4),  # Connect the two communities
-    #     (7, 8), (8, 9), (7, 9),
-    #     (9, 4)   # Connect to the main community
-    # ]
-    # for u, v in edges:
-    #     g.add_edge(u, v)
-    #     g.update_supernode_features(u, v, 0, 0, 1, 1)
+    g = Graph()
+    edges = [
+        (1, 2), (1, 3), (2, 3),
+        (4, 5), (5, 6), (4, 6),
+        (3, 4),  # Connect the two communities
+        (7, 8), (8, 9), (7, 9),
+        (9, 4)   # Connect to the main community
+    ]
+    for u, v in edges:
+        g.add_edge(u, v)
+        g.update_supernode_features(u, v, 0, 0, 1, 1)
     
-    from graph_gen import get_graph
-    g = get_graph()
+    # from graph_gen import get_graph
+    # g = get_graph()
         
     # Run Leiden algorithm
-    communities = leiden(g, gamma=0.5, verbose=True) # the higher the gamma, the more communities will be detected
+    communities = leiden(g, gamma=0.5, verbose=False) # the higher the gamma, the more communities will be detected
     # the lower the gamma, the fewer communities will be detected (more changes will be accepted)
 
     print('Final communities: ', communities)
+
+    from graph_cot import visualize_custom_graph
+    visualize_custom_graph(g, communities)

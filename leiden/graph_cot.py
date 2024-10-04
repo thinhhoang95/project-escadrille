@@ -95,3 +95,31 @@ def convert_custom_graph_to_networkx(custom_graph):
 
     return nx_graph
 
+import matplotlib.pyplot as plt
+
+def visualize_custom_graph(g, communities = None): # g: custom graph
+    # Visualize graph g with networkx 
+    g_nx = convert_custom_graph_to_networkx(g)
+    # Visualize the graph
+    pos = nx.spring_layout(g_nx)
+    plt.figure(figsize=(6, 4))
+    
+    # Assign colors to communities
+    if communities:
+        node_map = {node_id_in_graph: j for j, node_id_in_graph in enumerate(g.nodes())} # reindexing the nodes in the graph to zero-indexed
+        color_map = plt.cm.get_cmap('viridis')
+        node_colors = {}
+        for i, community in enumerate(communities):
+            for node in community:
+                node_colors[node_map[node]] = color_map(i / len(communities)) # i: community index
+        colors = [node_colors.get(node_map[node], 'lightgrey') for node in g_nx.nodes()]
+    else:
+        colors = 'lightblue'  # Default color if no communities are provided
+    
+    nx.draw(g_nx, pos, with_labels=True, node_color=colors, 
+            node_size=500, font_size=10, font_weight='bold')
+    
+    plt.title("Stochastic Block Model Graph")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
