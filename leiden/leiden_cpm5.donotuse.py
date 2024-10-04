@@ -1,7 +1,47 @@
 from collections import defaultdict, deque
 import copy
-from graph_cot import Graph
 
+class Graph:
+    def __init__(self):
+        self.adj = defaultdict(set) # adjacency list {node: set(neighbors)}
+        self.weights = defaultdict(int)  # For weighted edges, if needed
+        self.total_weight = 0 # total weight of edges
+        # supernode features
+        self.internal_edges = defaultdict(int) # internal edges {community: internal edges}
+        self.num_nodes = defaultdict(int) # number of nodes {community: number of nodes}
+
+    def add_edge(self, u, v, weight=1):
+        if v not in self.adj[u]:
+            self.adj[u].add(v)
+            self.adj[v].add(u)
+            self.weights[(u, v)] = weight
+            self.weights[(v, u)] = weight
+            self.total_weight += weight
+        else:
+            # If edge already exists, update the weight
+            self.weights[(u, v)] += weight
+            self.weights[(v, u)] += weight
+            self.total_weight += weight
+            
+    def update_supernode_features(self, u, v, internal_edges_u, internal_edges_v, num_nodes_u, num_nodes_v):
+        # Update supernode features
+        self.internal_edges[u] = internal_edges_u
+        self.internal_edges[v] = internal_edges_v
+        self.num_nodes[u] = num_nodes_u
+        self.num_nodes[v] = num_nodes_v
+        
+    def nodes(self):
+        return list(self.adj.keys())
+
+    def neighbors(self, u):
+        return self.adj[u]
+    
+    def get_supernode_features(self, u):
+        return self.internal_edges[u], self.num_nodes[u]
+    
+    def get_supernode_features_all(self):
+        return self.internal_edges, self.num_nodes
+    
 def refine(graph, partition):
     """
     Refinement step to ensure communities are well-connected.
@@ -90,43 +130,6 @@ def check_if_graph_is_connected(graph):
             queue.extend(neighbor for neighbor in graph.neighbors(node) if neighbor not in visited)
 
     return len(visited) == len(graph.nodes())
-
-
-
-def cpm_modularity(graph, partition, gamma=1.0):
-    """
-    Calculate the CPM modularity for the given graph partition.
-    
-    :param graph: Graph object
-    :param partition: Dictionary mapping nodes to their community assignments
-    :param gamma: Resolution parameter (default: 1.0)
-    :return: CPM modularity value
-    """
-    q = 0.0
-    m = graph.total_weight  # Total edge weight in the graph
-    
-    # Group nodes by community
-    communities = defaultdict(set)
-    for node, comm in partition.items(): # of the supergraph
-        communities[comm].add(node)
-    
-    for comm, nodes in communities.items(): # e.g. {2: {1, 3}, 3: {2}, 10: {4, 5, 6}, 11: {8}, 8: {9, 7}}
-        e_c = 0  # Total edge weight within the community
-        n_c = 0  # Number of nodes in the community
-        
-        for node in nodes:
-            n_c += graph.num_nodes[node]  # Add number of nodes in this supernode
-            e_c += graph.internal_edges[node]  # Add internal edges of this supernode
-            
-            # Add edge weights to other nodes in the same community
-            for neighbor in graph.neighbors(node): # neighbor is the true neighbor on the supergraph
-                if neighbor in nodes: # and neighbor is in the community
-                    e_c += graph.weights[(node, neighbor)] / 2  # Divide by 2 to avoid double counting
-        
-        q += e_c / m - gamma * (n_c * (n_c - 1)) / (2 * m)
-    
-    return q
-    
     
     
 def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False):
@@ -161,15 +164,14 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
         
         # ======================================================
         # Local moving phase
-        # In this phase, we greedily move supernodes to communities that lead to improvement in the CPM score
         # ======================================================
         
         nodes = graph.nodes()
         for node in nodes:
             if verbose:
                 print('Considering supernode: ', node)
-            current_comm = partition[node] # current community of the supernode
-            neighbor_comms = defaultdict(int) # weights to neighboring communities
+            current_comm = partition[node]
+            neighbor_comms = defaultdict(int)
 
             # Collect the weights to neighboring communities (on this graph)
             for neighbor in graph.neighbors(node):
@@ -202,16 +204,63 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
                         print('Supernode ', node, ' is already in community ', comm, '. Skip.')
                     continue
                 
-                partition_current = copy.deepcopy(partition)
-                partition_new = copy.deepcopy(partition)
-                partition_new[node] = comm # attempt to assign the node to the new community
-                cpm_current = cpm_modularity(graph, partition_current, gamma)
-                cpm_new = cpm_modularity(graph, partition_new, gamma)
-                delta_cpm = cpm_new - cpm_current
+                # Delta CPM computation
+                # 1. Number of edges in the current community
+                # equals the sum of internal edges within the supernode
+                # plus the number of edges from the current supernode to other supernodes in the current community
+                
+                
+                
+                # Compute k_i_in_current_comm (number of edges in the current community)
+                # Internal edges within supernode i
+                e_ii = graph.internal_edges[node]
+
+                # Edges from supernode i to other supernodes in its current community (excluding itself)
+                k_i_in_current_comm = e_ii
+                for neighbor in graph.neighbors(node):
+                    if partition[neighbor] == current_comm and neighbor != node:
+                        k_i_in_current_comm += graph.weights[(node, neighbor)]
+
+                
+                # Compute k_i_in_new_comm
+                k_i_in_new_comm = neighbor_comms[comm]
+                
+                # Compute n_i, n_current_comm, n_new_comm
+                n_i = graph.num_nodes[node]
+                n_current_comm = community_n[current_comm]
+                n_new_comm = community_n[comm]
+
+
+                if verbose:
+                    print('*')
+                    print('Total weight: ', graph.total_weight)
+                    print(f'k_i_in_new_comm (connectedness to neighbor community {comm} / total edges from supernode {node} to community {comm}): ', k_i_in_new_comm)
+                    print(f'k_i_in_current_comm (connectedness to current community {current_comm} / total edges from supernode {node} to other supernodes in current community {current_comm}): ', k_i_in_current_comm)
+                    print(f'n_current_comm (number of nodes in current community {current_comm}): ', n_current_comm)
+                    print(f'n_new_comm (number of nodes in new community {comm} before moving): ', n_new_comm)
+                    print('*')
+                
+                
+                n_i = graph.num_nodes[node]
+                n_current_comm = community_n[current_comm]
+                n_new_comm = community_n[comm]
+
+                delta_e = k_i_in_new_comm - k_i_in_current_comm
+
+                delta_r = gamma * (
+                    ( (n_new_comm + n_i)*(n_new_comm + n_i - 1) - n_new_comm*(n_new_comm - 1)
+                    + (n_current_comm - n_i)*(n_current_comm - n_i - 1) - n_current_comm*(n_current_comm - 1)
+                    )
+                ) / 2
                 
                 if verbose:
-                    print('CPM of the current partition: ', cpm_current)
-                    print('CPM of the new partition: ', cpm_new)
+                    print('Delta E: ', delta_e)
+                    print('Delta R: ', delta_r)
+
+                delta_cpm = (delta_e - delta_r) / graph.total_weight
+
+                
+                if verbose:
                     print('Delta CPM: ', delta_cpm)
                     
                 if delta_cpm > best_gain:
@@ -376,17 +425,10 @@ if __name__ == "__main__":
     #     g.update_supernode_features(u, v, 0, 0, 1, 1)
     
     from graph_gen import get_graph
-    g = get_graph(5, [10, 15, 20, 25, 30], 1, 0.03)
-
-    # Visualize the original graph
-    from graph_cot import visualize_custom_graph
-    visualize_custom_graph(g, None)
+    g = get_graph()
         
     # Run Leiden algorithm
-    communities = leiden(g, gamma=0.5, verbose=False) # the higher the gamma, the more communities will be detected
+    communities = leiden(g, gamma=0.5, verbose=True) # the higher the gamma, the more communities will be detected
     # the lower the gamma, the fewer communities will be detected (more changes will be accepted)
 
     print('Final communities: ', communities)
-
-    from graph_cot import visualize_custom_graph
-    visualize_custom_graph(g, communities)
