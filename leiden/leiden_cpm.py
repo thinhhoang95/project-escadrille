@@ -26,32 +26,86 @@ class Graph:
     def neighbors(self, u):
         return self.adj[u]
     
-def update_community_metrics(community_m, community_n, move_buffer, verbose=False):
-    if verbose:
-        print('\033[94mUpdating community metrics...\033[0m')
-    # move_buffer: (node, current_comm, best_comm, k_i_in_current_comm, k_i_in_new_comm, n_current_comm, n_new_comm)
-    for (node, current_comm, best_comm, k_i_in_current_comm, k_i_in_new_comm, n_current_comm, n_new_comm) in move_buffer:
-        if verbose:
-            print('')
-            print('Moving node ', node, ' from community ', current_comm, ' to community ', best_comm)
-            print('Before moving: ')
-            print('Community internal edges: ', community_m)
-            print('Community number of nodes: ', community_n)
-        # Decrease metrics of current_comm
-        n_moved = n_current_comm
-        community_m[current_comm] -= k_i_in_current_comm
-        community_n[current_comm] -= n_moved
-
-        # Increase metrics of best_comm
-        community_m[best_comm] += k_i_in_new_comm
-        community_n[best_comm] += n_moved
-        
-        if verbose:
-            print('After moving: ')
-            print('Community internal edges after moving (community: internal edges): ', community_m)
-            print('Community number of nodes after moving (community: number of nodes): ', community_n)
-        
+def compute_community_metrics(graph_ori, community_hierarchy):
+    # Compute community metrics
+    # community_m: internal edges of community {community: internal edges}
+    # community_n: number of nodes of community {community: number of nodes}
+    community_m = {comm: 0 for comm in community_hierarchy.keys()}  # Internal edges {community: internal edges}
+    community_n = {comm: 0 for comm in community_hierarchy.keys()}  # Number of nodes {community: number of nodes}
     
+    for comm, nodes_in_comm in community_hierarchy.items():
+        for node in nodes_in_comm:
+            community_n[comm] += 1
+            for neighbor in graph_ori.neighbors(node):
+                if neighbor in nodes_in_comm:
+                    community_m[comm] += graph_ori.weights[(node, neighbor)]
+    
+    # Since each internal edge is counted twice in undirected graphs
+    for comm in community_m:
+        community_m[comm] //= 2
+        
+    return community_m, community_n
+    
+# def update_community_metrics(community_m, community_n, move_buffer, verbose=False):
+#     if verbose:
+#         print('\033[94mUpdating community metrics...\033[0m')
+#     # move_buffer: (node, current_comm, best_comm, k_i_in_current_comm, k_i_in_new_comm, n_current_comm, n_new_comm)
+#     for (node, current_comm, best_comm, k_i_in_current_comm, k_i_in_new_comm, n_current_comm, n_new_comm) in move_buffer:
+#         if verbose:
+#             print('')
+#             print('Moving node ', node, ' from community ', current_comm, ' to community ', best_comm)
+#             print('Before moving: ')
+#             print('Community internal edges: ', community_m)
+#             print('Community number of nodes: ', community_n)
+#         # Decrease metrics of current_comm
+#         n_moved = n_current_comm
+#         community_m[current_comm] -= k_i_in_current_comm
+#         community_n[current_comm] -= n_moved
+
+#         # Increase metrics of best_comm
+#         community_m[best_comm] += k_i_in_new_comm
+#         community_n[best_comm] += n_moved
+        
+#         if verbose:
+#             print('After moving: ')
+#             print('Community internal edges after moving (community: internal edges): ', community_m)
+#             print('Community number of nodes after moving (community: number of nodes): ', community_n)
+        
+def compute_cpm(graph, partition, gamma):
+    """
+    Compute the Constant Potts Model (CPM) quality function for the given graph and partition.
+    
+    :param graph: Graph object
+    :param partition: Dictionary mapping nodes to their community assignments
+    :param gamma: Resolution parameter
+    :return: CPM quality value
+    """
+    cpm = 0
+    m = graph.total_weight  # Total edge weight in the graph
+    
+    # Create a dictionary to store community sizes
+    community_sizes = defaultdict(int)
+    for node, comm in partition.items():
+        community_sizes[comm] += 1
+    
+    # Compute the sum of internal edge weights for each community
+    internal_weights = defaultdict(float)
+    for node, comm in partition.items():
+        for neighbor in graph.neighbors(node):
+            if partition[neighbor] == comm:
+                internal_weights[comm] += graph.weights[(node, neighbor)] / 2  # Divide by 2 to avoid double counting
+    
+    # Compute CPM
+    for comm in set(partition.values()):
+        m_c = internal_weights[comm]
+        n_c = community_sizes[comm]
+        delta = m_c / m - gamma * (n_c * (n_c - 1)) / (2 * m)
+        print('CPMC: mc/m: ', m_c / m)
+        print('CPMC: gamma * (n_c * (n_c - 1)) / (2 * m): ', gamma * (n_c * (n_c - 1)) / (2 * m))
+        print('CPMC: delta: ', delta)
+        cpm += delta
+    
+    return cpm
 
 def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False):
     """
@@ -60,6 +114,9 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
     :param gamma: CPM resolution parameter
     :return: list of communities
     """
+    
+    graph_ori = copy.deepcopy(graph) # store the original graph
+    
     if resolution_parameter is not None:
         gamma = resolution_parameter
 
@@ -95,13 +152,16 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
         
     level = 0
     while improvement:
-        print('\033[94m--------------------------------\033[0m')
-        print('\033[94mLEVEL ', level + 1, '\033[0m')
-        level += 1
-        print('\033[94m--------------------------------\033[0m')
-        
-        print('Community internal edges: ', community_m)
-        print('Community number of nodes: ', community_n)
+        if verbose:
+            print('\033[94m--------------------------------\033[0m')
+            print('\033[94mLEVEL ', level + 1, '\033[0m')
+            level += 1
+            print('\033[94m--------------------------------\033[0m')
+            print('Community internal edges: ', community_m)
+            print('Community number of nodes: ', community_n)
+            print('Inter community edges: ', graph.weights)
+        else:
+            level += 1
         
         improvement = False
         if verbose:
@@ -127,7 +187,7 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             for comm, edge_weight in neighbor_comms.items():
                 if verbose:
                     print('Connectedness to community ', comm, ': ', edge_weight)
-            
+        
             # Compute the best community to move to
             best_comm = current_comm
             best_gain = 0
@@ -168,12 +228,25 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
                 
                 
                 # delta_cpm = (2 * k_i_in_new_comm) / graph.total_weight - gamma * (n_new_comm - n_current_comm + 1) / graph.total_weight
+                # To verify delta_cpm, we will compute it in two ways:
+                # 1: Use the derived formula
                 delta_cpm = (k_i_in_new_comm - k_i_in_current_comm) / graph.total_weight - gamma * (n_new_comm - n_current_comm + 1) / graph.total_weight
+                # 2: create a partition with node in new community, and compute the change in modularity
+                
+                partition_new = partition.copy()
+                partition_new[node] = comm
+                cpm_old = compute_cpm(graph_ori, partition, gamma)
+                cpm_new = compute_cpm(graph_ori, partition_new, gamma)
+                delta_cpm2 = cpm_new - cpm_old
+                
+                if abs(delta_cpm - delta_cpm2) > 1e-6:
+                    print('Delta CPM: ', delta_cpm, ', Delta CPM 2: ', delta_cpm2)
+                    raise ValueError('Delta CPM and Delta CPM 2 are not the same. Please check the computation.')
+                
                 
                 if verbose:
-                    print('Delta CPM: ', delta_cpm, ', best gain: ', best_gain)
-                
-                
+                    print('Delta CPM: ', delta_cpm, ', Delta CPM 2: ', delta_cpm2)
+                    
                 if delta_cpm > best_gain:
                     best_gain = delta_cpm
                     best_comm = comm
@@ -187,12 +260,7 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
                 if verbose:
                     print('\033[91mNode ', node, ' is moved to community ', best_comm, '\033[0m')
                 improvement = True
-                move_buffer.append((node, current_comm, best_comm, k_i_in_current_comm, k_i_in_new_comm, n_current_comm, n_new_comm))
                 
-        # Update community metrics
-        update_community_metrics(community_m, community_n, move_buffer, verbose)
-        move_buffer = [] # dump the move buffer for the next level
-
         
         # Check if any improvement was made during local moving and refinement
         # If yes, proceed to aggregation
@@ -201,9 +269,10 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             # Refinement phase
             # ======================================================
             # Refinement phase to ensure communities are well-connected
-            print('')
-            print('')
+            
             if verbose:
+                print('')
+                print('')
                 print('*** After local moving phase, before refinement (node: community assignment): ', partition)
             partition = refine(graph, partition)
             if verbose:
@@ -217,24 +286,9 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             communities = defaultdict(list)
             for node, comm in partition.items():
                 communities[comm].append(node)
-                
-            # Reset community metrics
-            community_m = {} # recall: community_m is the sum of internal edges for each community
-            community_n = {} # recall: community_n is the number of nodes for each community
-            for comm, nodes_in_comm in communities.items():
-                community_n[comm] = len(nodes_in_comm)
-                internal_edges = 0
-                for node in nodes_in_comm:
-                    for neighbor in graph.neighbors(node):
-                        if partition[neighbor] == comm:
-                            internal_edges += graph.weights[(node, neighbor)]
-                # Each internal edge is counted twice
-                community_m[comm] = internal_edges // 2
-
 
             # Assign unique community IDs
             new_comm_ids = {comm: idx for idx, comm in enumerate(communities.keys())}
-
 
             # Update community hierarchy: map new communities to original nodes
             new_community_hierarchy = {}
@@ -250,7 +304,10 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             new_graph = Graph()
             # To track inter-community edge weights
             inter_comm_edges = defaultdict(int) # {community pair: edge weight}
-
+            intra_comm_edges = defaultdict(int) # {community: edge weight}
+            comm_nodes = defaultdict(list) # {community: list of nodes}
+            
+            # Compute inter and intra community edges
             for comm, nodes_in_comm in communities.items():
                 for node in nodes_in_comm:
                     for neighbor in graph.neighbors(node):
@@ -259,6 +316,12 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
                             # To avoid double-counting, ensure consistent ordering
                             sorted_comm = tuple(sorted((new_comm_ids[comm], new_comm_ids[neighbor_comm])))
                             inter_comm_edges[sorted_comm] += graph.weights[(node, neighbor)]
+                        else:
+                            intra_comm_edges[comm] += graph.weights[(node, neighbor)]
+                            
+            # Compute community nodes
+            for comm, nodes_in_comm in communities.items():
+                comm_nodes[new_comm_ids[comm]].extend(nodes_in_comm)
 
             # Add edges to the new graph based on inter-community edge weights
             for (comm1, comm2), weight in inter_comm_edges.items():
@@ -268,7 +331,7 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
 
             # Update total_weight for the new graph
             # new_graph.total_weight = sum(new_graph.weights.values()) // 2  # Since undirected
-            new_graph.total_weight = graph.total_weight # total weight is the same as the original graph 
+            new_graph.total_weight = graph_ori.total_weight # total weight is the same as the original graph 
             
             # Update community hierarchy
             community_hierarchy = new_community_hierarchy
@@ -279,23 +342,17 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             # Reinitialize partition: each new community is its own community
             partition = {node: node for node in graph.nodes()}
             
-            # Reinitialize partition: each new community is its own community
-            partition = {node: node for node in graph.nodes()}
-            
             # Reindexing community metrics
-            community_m_copy = copy.deepcopy(community_m)
-            community_n_copy = copy.deepcopy(community_n)
-            community_m = {node: 0 for node in graph.nodes()}  # Internal edges {community: internal edges}
-            community_n = {node: 1 for node in graph.nodes()}  # Number of nodes {community: number of nodes}
-            for comm in community_m_copy: # comm is the old community ID, e.g., 2, 9, 6, 8; new_comm_ids[comm] is the corresponding new community ID, e.g., 0, 1, 2, 3
-                community_m[new_comm_ids[comm]] = community_m_copy[comm]
-                community_n[new_comm_ids[comm]] = community_n_copy[comm]
+            community_m, community_n = compute_community_metrics(graph_ori, community_hierarchy)
             
             if verbose:
                 print('*** After aggregation (node: community assignment): ', partition)
-                print('Expect: every node is its own community, e.g., 1:1, 2:2, 3:3, etc.')
+                print('    Expect: every node is its own community, e.g., 1:1, 2:2, 3:3, etc.')
+                print('Community internal edges: ', community_m)
+                print('Community number of nodes: ', community_n)
                 print('\033[92m*** Community hierarchy updated ***\033[0m')
-            print(community_hierarchy)
+                print(community_hierarchy)
+                print('Current graph: ', graph.adj)
         # ======================================================
         # End of Aggregation phase
         # ======================================================

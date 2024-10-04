@@ -26,23 +26,6 @@ class Graph:
     def neighbors(self, u):
         return self.adj[u]
     
-def compute_community_metrics(graph, partition):
-    community_m = defaultdict(int)  # Internal edges {community: internal edges}
-    community_n = defaultdict(int)  # Number of nodes {community: number of nodes}
-
-    for node in graph.nodes():
-        community = partition[node]
-        community_n[community] += 1
-        for neighbor in graph.neighbors(node):
-            if partition[neighbor] == community:
-                community_m[community] += graph.weights[(node, neighbor)]
-
-    # Since each internal edge is counted twice in undirected graphs
-    for comm in community_m:
-        community_m[comm] //= 2
-
-    return dict(community_m), dict(community_n)
-    
 def update_community_metrics(community_m, community_n, move_buffer, verbose=False):
     if verbose:
         print('\033[94mUpdating community metrics...\033[0m')
@@ -204,7 +187,12 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
                 if verbose:
                     print('\033[91mNode ', node, ' is moved to community ', best_comm, '\033[0m')
                 improvement = True
+                move_buffer.append((node, current_comm, best_comm, k_i_in_current_comm, k_i_in_new_comm, n_current_comm, n_new_comm))
                 
+        # Update community metrics
+        update_community_metrics(community_m, community_n, move_buffer, verbose)
+        move_buffer = [] # dump the move buffer for the next level
+
         
         # Check if any improvement was made during local moving and refinement
         # If yes, proceed to aggregation
@@ -262,9 +250,7 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             new_graph = Graph()
             # To track inter-community edge weights
             inter_comm_edges = defaultdict(int) # {community pair: edge weight}
-            intra_comm_edges = defaultdict(int) # {community: edge weight}
-            
-            # Compute inter-community edges
+
             for comm, nodes_in_comm in communities.items():
                 for node in nodes_in_comm:
                     for neighbor in graph.neighbors(node):
@@ -273,8 +259,6 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
                             # To avoid double-counting, ensure consistent ordering
                             sorted_comm = tuple(sorted((new_comm_ids[comm], new_comm_ids[neighbor_comm])))
                             inter_comm_edges[sorted_comm] += graph.weights[(node, neighbor)]
-                        else:
-                            intra_comm_edges[comm] += graph.weights[(node, neighbor)]
 
             # Add edges to the new graph based on inter-community edge weights
             for (comm1, comm2), weight in inter_comm_edges.items():
@@ -295,6 +279,9 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             # Reinitialize partition: each new community is its own community
             partition = {node: node for node in graph.nodes()}
             
+            # Reinitialize partition: each new community is its own community
+            partition = {node: node for node in graph.nodes()}
+            
             # Reindexing community metrics
             community_m_copy = copy.deepcopy(community_m)
             community_n_copy = copy.deepcopy(community_n)
@@ -307,11 +294,8 @@ def leiden(graph, gamma=1.0, resolution_parameter=None, seed=None, verbose=False
             if verbose:
                 print('*** After aggregation (node: community assignment): ', partition)
                 print('Expect: every node is its own community, e.g., 1:1, 2:2, 3:3, etc.')
-                print('Community internal edges: ', community_m)
-                print('Community number of nodes: ', community_n)
                 print('\033[92m*** Community hierarchy updated ***\033[0m')
-                print(community_hierarchy)
-                print('Current graph: ', graph.adj)
+            print(community_hierarchy)
         # ======================================================
         # End of Aggregation phase
         # ======================================================
