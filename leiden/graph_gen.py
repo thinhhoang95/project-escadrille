@@ -2,17 +2,17 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import random
 
-def get_sbm_graph():
+def get_sbm_graph(num_communities = 4, community_sizes = [10, 8, 6, 10], p_intra = 1, p_inter = 0.03):
     # Set random seed for reproducibility
     random.seed(42)
 
     # Define the number of communities and their sizes
-    num_communities = 4
-    community_sizes = [10, 8, 6, 10]  # Four communities with different sizes
+    # num_communities = 4
+    # community_sizes = [10, 8, 6, 10]  # Four communities with different sizes
 
     # Define the probability of edges within and between communities
-    p_intra = 1  # Probability of edges within the same community
-    p_inter = 0.03  # Probability of edges between different communities
+    # p_intra = 1  # Probability of edges within the same community
+    # p_inter = 0.03  # Probability of edges between different communities
 
     # Create the Stochastic Block Model
     probs = [[p_intra if i == j else p_inter for j in range(num_communities)] for i in range(num_communities)]
@@ -34,8 +34,8 @@ def get_sbm_graph():
 # Function to convert NetworkX graph to custom Graph class
 from graph_cot import Graph, convert_networkx_to_custom_graph
 
-def get_graph():
-    G = get_sbm_graph()
+def get_graph(num_communities = 4, community_sizes = [10, 8, 6, 10], p_intra = 1, p_inter = 0.03):
+    G = get_sbm_graph(num_communities, community_sizes, p_intra, p_inter)
     g = convert_networkx_to_custom_graph(G)
     return g
 
