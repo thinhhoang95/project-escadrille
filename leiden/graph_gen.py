@@ -32,33 +32,7 @@ def get_sbm_graph():
     return G
 
 # Function to convert NetworkX graph to custom Graph class
-from leiden.leiden_cot import Graph
-
-def convert_networkx_to_custom_graph(nx_graph):
-    """
-    Converts a NetworkX graph to a custom Graph class instance.
-
-    Parameters:
-    - nx_graph (networkx.Graph): The NetworkX graph to convert.
-
-    Returns:
-    - Graph: An instance of the custom Graph class with the same structure.
-    """
-    custom_graph = Graph()
-
-    # Add all edges to the custom graph
-    for u, v, data in nx_graph.edges(data=True):
-        # If the NetworkX graph has weights, use them; otherwise, default to 1
-        weight = data.get('weight', 1)
-        custom_graph.add_edge(u, v, weight)
-        custom_graph.update_supernode_features(u, v, 0, 0, 1, 1)
-
-    # Optionally, ensure all nodes are added (even isolated nodes)
-    for node in nx_graph.nodes():
-        if node not in custom_graph.adj:
-            custom_graph.adj[node]  # This will initialize the set for the node
-
-    return custom_graph
+from graph_cot import Graph, convert_networkx_to_custom_graph
 
 def get_graph():
     G = get_sbm_graph()
